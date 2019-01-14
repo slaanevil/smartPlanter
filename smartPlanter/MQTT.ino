@@ -1,28 +1,27 @@
 
 
-//************************************************************************************
-//************************************************************************************
 
-//                                         MQTT
+//********************************************************************************************
+//*************************************** MQTT ***********************************************
+//********************************************************************************************
 
-//************************************************************************************
-//************************************************************************************
 
-/****************************** Serial variables ***************************************/
-
+//Numero de caracteres maximos por buffer
 #define SIZEBUFFERS 64
 
+//Buffers de mensajes
 char topicBuffer[SIZEBUFFERS]="";
 char msgBuffer[SIZEBUFFERS]="";
 char subTopicBuffer[SIZEBUFFERS]="";
 
-//int inIndex=0;
-
+//Numero maximo de subscripciones
 #define MAXSUBS 20
 int subs=0;
 
+//Lista de todas las subscripciones
 char subTopic[MAXSUBS][SIZEBUFFERS];
 
+//Tiempo de timeout en conexion
 #define TIMEOUT 500 //ms
 unsigned long timeLast = 0;
 
@@ -42,34 +41,39 @@ unsigned int MQTTintentos = 0;
  */
 void callback(char* topic, byte* payload, unsigned int length) 
 {
-  //digitalWrite(LED_BUILTIN, LOW); //Activamos led
+  //Activamos led de aviso
+  digitalWrite(LED_BUILTIN, LOW); 
 
+  //Traducimos el mensaje recibido en String
   String subtopic=(String)topic;
   String msg="";
 
-  
-  //Write topic
+  //Mostramos el topic del mensaje recibido
   Serial.print("Mensaje recibido: ");
   Serial.print(topic);
   Serial.print(",");
   
   
-  //Write msg in serial port
+  //Traducimos el mensaje a un String
   for (int i = 0; i < length; i++) {
     msg=msg+(char)payload[i];
     //Serial.print((char)payload[i]);
   }
+
+  //Mostramos el mensaje
   Serial.print(msg);
   Serial.print(";");
   Serial.println();
 
-  
+  //Obtenemos el subtopic dentro del topic
   subtopic=subtopic.substring(subtopic.lastIndexOf('/')+1);
 
+  //Pasamos el subtopic y el mensaje a la siguiente funcion para ejecutar la
+  //tarea correspondiente
   checkCommand(subtopic,msg);
   
-
-  //digitalWrite(LED_BUILTIN, HIGH); //Desactivamos led
+  //Apagamos el led
+  digitalWrite(LED_BUILTIN, HIGH); 
 
 }
 
@@ -82,38 +86,45 @@ void callback(char* topic, byte* payload, unsigned int length)
  *  Vuelve a subscribirse a todos los topic
  * 
  */
-void MQTTreconnect() {
-  Serial.println("Connecting MQTT");
-  // Loop until we're reconnected
+void MQTTreconnect() 
+{
+  
+  Serial.println("Conectando al servidor MQTT...");
 
+  //Bucle que se repite mientras no haya una conexion
   MQTTintentos=0;
   while (!clientMQTT.connected() && MQTTintentos <= 10) 
   {
     MQTTintentos++;
-    // Create a random client ID
-    String clientId = "ESP8266Client-";
-    clientId += String(random(0xffff), HEX);
     
-    // Attempt to connect
+    // Creamos el Id de cliente
+    String clientId = "Oddish_";
+    clientId += oddishId;
+    
+    // Variable para guardar el estado de la conexion
     bool MQTTstatus;
 
-    
+    //Conexion
     if ( clientMQTT.connect(clientId.c_str(),mqtt_user,mqtt_password) ) 
     {
-      //resubscribe
+      //resubscribir a todos los topics
       for(int i =0; i< subs; i++)
       {
         clientMQTT.subscribe(subTopic[i]);
         Serial.print("Subscribe ");
         Serial.println(subTopic[i]);
       }
-    } else 
+    } 
+    else 
     {
+      //Reconexion en 500 milisegundos
       delay(500);
       Serial.print(".");
     }
   }
 
+
+  //Mostramos mensaje pasados todos los intentos
   if( clientMQTT.connected() )
   {
     Serial.println("");
@@ -129,55 +140,11 @@ void MQTTreconnect() {
 }
 
 
-/** void addSubscription(char subsTopic[])
+/** void MQTTsend(String subtopic, String msg)
  * 
- *  Añade un topic a la lista de subscripciones
+ *  Envia un mensaje al servidor MQTT, dado un topic y un mensaje
  *  
- *  Parametros:
- *    char subsTopic[] : topic al que se va a subscribir
  */
-void addSubscription(char subsTopic[])
-{
-  
-  for(int i =0 ; i < subs ; i++)
-  {
-    if(strcmp(subTopic[i], subsTopic)  == 0){ return; }//Ya existe el elemento y no se añade a la lista
-  }
-  
-  //Asignamos el mensaje al topic a subscribirse
-  strcpy(subTopic[subs],subsTopic);
-  subs++;
-
-  //Si esta conectado nos subscribimos en este momento, si no
-  //esperamos a conectar
-  if(clientMQTT.connected())
-  {
-    Serial.print("Subcribe to: ");
-    Serial.println(subsTopic);
-    clientMQTT.subscribe(subsTopic);
-  }
-}
-
-
-void MQTTsubscribeAll()
-{
-  //Subscribe MQTT
-  char aux[20];
-  sprintf(aux,"/SEG/%d/c/#",oddishId);
-  addSubscription(aux);
-}
-
-
-void checkCommand(String subtopic,String msg)
-{
-   Serial.print("Cmd Recibido: ");Serial.print(subtopic);Serial.print(",");Serial.println(msg);
-    if(subtopic == "lightSt")
-    {
-      lightState=msg.toInt();
-    }
-}
-
-
 void MQTTsend(String subtopic, String msg)
 {
   //Traducimos String a char
@@ -199,13 +166,71 @@ void MQTTsend(String subtopic, String msg)
 }
 
 
-void MQTTsubscribe(String subtopic)
+/** void addSubscription(char subsTopic[])
+ * 
+ *  Añade un topic a la lista de subscripciones
+ *  
+ *  Parametros:
+ *    char subsTopic[] : topic al que se va a subscribir
+ */
+void addSubscription(char subsTopic[])
+{
+  //COmprobamos si ya existe el topic
+  for(int i =0 ; i < subs ; i++)
+  {
+    if(strcmp(subTopic[i], subsTopic)  == 0){ return; }//Ya existe el elemento y no se añade a la lista
+  }
+  
+  //Asignamos el mensaje al topic a subscribirse
+  strcpy(subTopic[subs],subsTopic);
+  subs++;
+
+  //Si esta conectado nos subscribimos en este momento, si no
+  //esperamos a conectar
+  if(clientMQTT.connected())
+  {
+    Serial.print("Subcribe to: ");
+    Serial.println(subsTopic);
+    clientMQTT.subscribe(subsTopic);
+  }
+}
+
+/** void MQTTsubscribeAll()
+ * 
+ *  Se subscribe al patron generico para recibir todos los mensajes
+ *  
+ */
+void MQTTsubscribeAll()
 {
   //Subscribe MQTT
-  //serialMqtt.print("subs,/bonsai");
-  Serial.print("subs,/SEG/");
-  Serial.print(oddishId);
-  Serial.print("/c/");
-  Serial.print(subtopic);
-  Serial.print(";");
+  char aux[20];
+  sprintf(aux,"/Oddish/%d/c/#",oddishId);
+  addSubscription(aux);
+}
+
+
+
+/** void checkCommand(String subtopic,String msg)
+ * 
+ *  Realiza la tarea correspondiente al mensaje recibido
+ *  
+ */
+void checkCommand(String subtopic,String msg)
+{
+    //Opcion para encender la luz
+    if(subtopic == "lightSt")
+    {
+      //Cambiamos el estado
+      lightState=msg.toInt();
+
+      //Encendemos o apagamos
+      if(lightState)
+      {
+        digitalWrite(lightPin,HIGH);
+      }
+      else
+      {
+        digitalWrite(lightPin,LOW);
+      }
+    }
 }

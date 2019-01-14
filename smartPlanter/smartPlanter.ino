@@ -27,6 +27,7 @@
 const char* ssid = "TP-LINK_058CDE";
 const char* password =  "45007200";
 
+
 WiFiClient espClient;
 
 //********************************************************************************************
@@ -47,7 +48,7 @@ PubSubClient clientMQTT(espClient);
 
 
 //Sensor de humedad en tierra
-const int lightPin = LED_BUILTIN;
+const int lightPin = D3;
 
 //Sensor de humedad en tierra
 const int soilPin = A0;
@@ -57,7 +58,7 @@ BME280I2C bme;
 
 //Unidades de medicion para el sensor BME
 BME280::TempUnit tempUnit(BME280::TempUnit_Celsius); //Celsius
-BME280::PresUnit presUnit(BME280::PresUnit_Pa); //Pascales
+BME280::PresUnit presUnit(BME280::PresUnit_hPa); //hPascales
 
 
 //********************************************************************************************
@@ -99,17 +100,22 @@ const long interval = 5000;
 void setup()
 {
   //OddishID
+  //Obtenemos el identificador del chip
   oddishId = ESP.getChipId();
   
   //Abrir puerto serie
   Serial.begin(115200);
   Wire.begin();
 
+  //Inicializacion luz
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(lightPin, OUTPUT);
+
   //Inicializacion sensores
   pinMode(soilPin, INPUT);
   bme.begin();
   
-  //Wifi connection
+  //Nos conectamos a la red Wifi
   WifiReconnect();
 
   //MQTT setup
@@ -123,7 +129,13 @@ void setup()
     MQTTsubscribeAll();
   }
 
+  //Mensajes de inicio
   Serial.println("Ok");
+  Serial.println();
+  Serial.print("Id Oddish: ");
+  Serial.println(oddishId);
+  Serial.println();
+  
 
 }
 
@@ -133,35 +145,33 @@ void setup()
 //********************************************************************************************
 void loop()
 {
+    //Nos reconectamos a la wifi si hemos perdido la conexion
     if (WiFi.status() != WL_CONNECTED) {
       WifiReconnect();
     }
     
-    //Conexion a MQTT
+    //Reconexion a MQTT si la hemos perdido
     if ( WiFi.status() == WL_CONNECTED && !clientMQTT.connected() ) 
     {
       MQTTreconnect();
     }
-    //Solo si hay conexion activa
     else
     {
       //Bucle para lectura de mensajes entrantes
       clientMQTT.loop();
-      
     }
 
 
-
-    //Tiempo de muestreo de sensores
+    //Muestreo de sensores
+    //Se realiza cada 5000 milisegundos 0 5 segundos
     currentMillis = millis();
     if (currentMillis - previousMillis >= interval) 
     {
       previousMillis = currentMillis;
 
       //Medicion de sensores
-      
       //Soil
-      soil=meassureSoil();//mode filter
+      soil=readSoil();//mode filter
       
       //Temperatura,humedad y presion
       bme.read(presion, temp, hum, tempUnit, presUnit); 
@@ -191,23 +201,27 @@ void loop()
 //*********************************  Functions  **********************************************
 //********************************************************************************************
 
-int meassureSoil()
+//Esta funcion se encarga de leer el sensor de suelo
+int readSoil()
 {
   int m = analogRead(soilPin); 
   //Serial.print("Analog: ");Serial.println(m);
 
-  //Ajustamos el porcentaje de salida
-  m = map(m, 1480,2950, 100, 0);//3.3v
+  //Ajustamos el porcentaje de salida de 0 a 100 telniendo en cuenta la calibracion
+  m = map(m, 115,215, 100, 0);//3.3v
+
+  //Ajustamos los limites
+  if( m < 0 )   m = 0;
+  if( m > 100 ) m = 100;
 
   //Devolvemos la medida
   return m;
 }
 
-
+//Esta funcion se encarga de mandar a traves de internet los datos de los sensores
 void sendStateMQTT()
 {
   //Datos a enviar
-
   MQTTsend("soil", (String)soil);
 
   MQTTsend("temp", (String)temp);
